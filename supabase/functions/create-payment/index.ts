@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -36,7 +37,8 @@ serve(async (req) => {
       logStep("API key is valid");
     } catch (keyError) {
       logStep("API key test failed", keyError);
-      throw new Error(`Invalid Stripe API key: ${keyError.message}`);
+      const errorMessage = keyError instanceof Error ? keyError.message : String(keyError);
+      throw new Error(`Invalid Stripe API key: ${errorMessage}`);
     }
 
     // Create Supabase client
@@ -61,7 +63,7 @@ serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { tutorId, examType, lessonQuantity = 1 } = body;
+    const { tutorId, examType, lessonQuantity = 1, customAmount } = body;
     
     if (!tutorId || !examType) {
       throw new Error("Missing required parameters: tutorId and examType");
@@ -89,20 +91,26 @@ serve(async (req) => {
       chargesEnabled: tutorProfile.charges_enabled
     });
 
-    // Get the rate for this exam type
-    const examRates = tutorProfile.exam_rates || {};
+    // Get the rate for this exam type - allow custom amount override
     let hourlyRate = 30; // Default rate
+    
+    if (customAmount && typeof customAmount === 'number' && customAmount > 0) {
+      hourlyRate = customAmount;
+      logStep("Custom amount provided", { customAmount });
+    } else {
+      const examRates = tutorProfile.exam_rates || {};
+      const examKeyMap: { [key: string]: string } = {
+        'tmua': 'TMUA',
+        'mat': 'MAT',
+        'esat': 'ESAT',
+        'interview-prep': 'Interview prep',
+        'interview prep': 'Interview prep' // Handle both formats
+      };
 
-    const examKeyMap: { [key: string]: string } = {
-      'tmua': 'TMUA',
-      'mat': 'MAT',
-      'esat': 'ESAT',
-      'interview-prep': 'Interview prep'
-    };
-
-    const rateKey = examKeyMap[examType] || examType.toUpperCase();
-    if (examRates[rateKey]) {
-      hourlyRate = examRates[rateKey];
+      const rateKey = examKeyMap[examType] || examType.toUpperCase();
+      if (examRates[rateKey]) {
+        hourlyRate = examRates[rateKey];
+      }
     }
 
     // Apply 15% discount for 5-lesson packs or more
@@ -115,7 +123,7 @@ serve(async (req) => {
       logStep("Bulk discount applied", { originalPrice: hourlyRate * lessonQuantity, discountedPrice: totalLessonPrice });
     }
 
-    const platformFeePercent = 0.10; // 10% platform fee
+    const platformFeePercent = 0.15; // 15% platform fee
     const tutorAmount = Math.round(totalLessonPrice * 100 * (1 - platformFeePercent));
     const platformFee = Math.round(totalLessonPrice * 100 * platformFeePercent);
     const totalAmount = tutorAmount + platformFee;
@@ -158,7 +166,7 @@ serve(async (req) => {
       success_url: `${req.headers.get("origin")}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.get("origin")}/team#${examType}`,
       
-      // STRIPE CONNECT CONFIGURATION (10% platform fee)
+      // STRIPE CONNECT CONFIGURATION (15% platform fee)
       payment_intent_data: {
         application_fee_amount: platformFee,
         transfer_data: {
