@@ -100,7 +100,7 @@ const Footer = () => {
             <span className="text-muted-foreground text-sm">Follow Us</span>
             <div className="flex gap-3">
               <a 
-                href="https://linkedin.com/company/oxbridge-imperial-prep" 
+                href="https://www.linkedin.com/company/oxbridge-and-imperial-prep-hub/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-primary transition-colors"
@@ -109,7 +109,7 @@ const Footer = () => {
                 <Linkedin className="h-5 w-5" />
               </a>
               <a 
-                href="https://instagram.com/oxbridgeprep" 
+                href="https://www.instagram.com/oxbridge_and_imperial_prep/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-primary transition-colors"
