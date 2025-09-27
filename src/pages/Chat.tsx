@@ -1,4 +1,5 @@
 
+
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -33,32 +34,75 @@ const Chat = () => {
 
 const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: any }) => {
   const [messageInput, setMessageInput] = useState('');
-  const [tutor, setTutor] = useState<any>(null);
-  const [tutorLoading, setTutorLoading] = useState(true);
+  const [otherPerson, setOtherPerson] = useState<any>(null);
+  const [personLoading, setPersonLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize chat hooks after authentication is confirmed
   const { conversation, messages, loading, sending, initializeConversation, sendMessage } = useChat();
 
-  // Load tutor from database
+  // Load the other person in the conversation
   useEffect(() => {
-    const loadTutor = async () => {
-      if (!tutorId) {
-        setTutorLoading(false);
+    const loadOtherPerson = async () => {
+      if (!tutorId || !user?.id) {
+        setPersonLoading(false);
         return;
       }
 
+      
+      
+
       try {
+        // First get current user's type
+        const { data: currentUserProfile, error: userError } = await supabase
+          .from('profiles')
+          .select('user_type')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (userError) throw userError;
+
+        const currentUserType = currentUserProfile?.user_type?.toLowerCase();
+
+        // Load the other person's profile
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', tutorId)
-          .single();
+          .maybeSingle();
 
-        if (error) {
-          console.error('Error loading tutor:', error);
-          setTutor(null);
+        if (error || !profile) {
+          // Try to enrich from conversation if available in URL
+          const urlParams = new URLSearchParams(window.location.search);
+          const conversationId = urlParams.get('conversation');
+          let name = 'User';
+          let role = 'Student';
+
+          if (conversationId) {
+            const { data: convo, error: convoError } = await supabase
+              .from('conversations')
+              .select('*')
+              .eq('id', conversationId)
+              .maybeSingle();
+
+            if (convo) {
+              const isOtherTutor = convo.tutor_id === tutorId;
+              role = isOtherTutor ? 'Tutor' : 'Student';
+              name = isOtherTutor ? (convo.tutor_name || 'User') : (convo.client_name || 'User');
+            }
+          }
+
+          setOtherPerson({
+            id: tutorId,
+            name,
+            role,
+            university: 'University',
+            course: 'Course',
+            year: 'Year',
+            specialties: [],
+            examRates: {}
+          });
         } else {
           // Handle subjects data structure safely
           let specialties: string[] = [];
@@ -71,10 +115,14 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
             specialties = profile.subjects as string[];
           }
 
-          setTutor({
+          // Determine role based on user type in profile
+          const profileUserType = profile.user_type?.toLowerCase();
+          const isProfileTutor = profileUserType === 'tutor';
+
+          setOtherPerson({
             id: profile.id,
-            name: profile.name || 'Anonymous Tutor',
-            role: "Tutor",
+            name: profile.name || (isProfileTutor ? 'Anonymous Tutor' : 'Anonymous Student'),
+            role: isProfileTutor ? 'Tutor' : 'Student',
             university: profile.university || 'University',
             course: profile.degree || 'Course',
             year: profile.year || 'Year',
@@ -83,15 +131,15 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
           });
         }
       } catch (error) {
-        console.error('Error loading tutor:', error);
-        setTutor(null);
+        console.error('Error loading profile:', error);
+        setOtherPerson(null);
       } finally {
-        setTutorLoading(false);
+        setPersonLoading(false);
       }
     };
 
-    loadTutor();
-  }, [tutorId]);
+    loadOtherPerson();
+  }, [tutorId, user?.id]);
 
   // Mark messages as read when entering conversation
   const markMessagesAsRead = useCallback((conversationId: string) => {
@@ -109,19 +157,20 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
 
   // Initialize conversation when component mounts
   useEffect(() => {
-    if (tutor?.id && user?.id) {
+    if (otherPerson?.id && user?.id) {
       // Get service type and conversation ID from URL query parameters
       const urlParams = new URLSearchParams(window.location.search);
       const serviceType = urlParams.get('service');
       const conversationId = urlParams.get('conversation');
       
+      // Always pass the other person's data - the useChat hook will handle role logic
       initializeConversation(user.id, { 
-        id: tutor.id, 
-        name: tutor.name, 
+        id: otherPerson.id, 
+        name: otherPerson.name, 
         service: serviceType || undefined 
       });
     }
-  }, [tutor?.id, user?.id, initializeConversation]); // Only depend on IDs, not full objects
+  }, [otherPerson?.id, user?.id, initializeConversation]); // Only depend on IDs, not full objects
 
   // Mark messages as read when conversation is loaded
   useEffect(() => {
@@ -183,7 +232,7 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
     }
   };
 
-  if (loading || tutorLoading) {
+  if (loading || personLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -191,14 +240,14 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
     );
   }
 
-  if (!tutor) {
+  if (!otherPerson) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="max-w-md text-center">
           <CardContent className="p-8">
-            <h1 className="text-2xl font-bold text-foreground mb-4">Tutor Not Found</h1>
+            <h1 className="text-2xl font-bold text-foreground mb-4">Person Not Found</h1>
             <p className="text-muted-foreground mb-6">
-              The requested tutor could not be found.
+              The requested person could not be found.
             </p>
             <Button asChild>
               <Link to="/team">
@@ -219,12 +268,19 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-gradient-hero rounded-full flex items-center justify-center">
-              <GraduationCap className="h-6 w-6 text-white" />
+              {otherPerson.role === 'Tutor' ? (
+                <GraduationCap className="h-6 w-6 text-white" />
+              ) : (
+                <User className="h-6 w-6 text-white" />
+              )}
             </div>
             <div>
-              <h1 className="text-xl font-semibold">Chat with {tutor.name}</h1>
+              <h1 className="text-xl font-semibold">Chat with {otherPerson.name}</h1>
               <p className="text-muted-foreground text-sm">
-                {tutor.year} {tutor.course} Student at {tutor.university}
+                {otherPerson.role === 'Tutor' 
+                  ? `${otherPerson.year} ${otherPerson.course} Student at ${otherPerson.university}`
+                  : otherPerson.role
+                }
               </p>
             </div>
           </div>
@@ -249,10 +305,13 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
             <div className="flex flex-col items-center justify-center h-full text-center py-8">
               <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold text-foreground mb-2">
-                Start your conversation with {tutor.name}
+                Start your conversation with {otherPerson.name}
               </h3>
               <p className="text-muted-foreground max-w-md">
-                Ask questions about their tutoring services, availability, or any other queries you might have.
+                {otherPerson.role === 'Tutor' 
+                  ? "Ask questions about their tutoring services, availability, or any other queries you might have."
+                  : "Start your conversation about tutoring services or academic support."
+                }
               </p>
             </div>
           ) : (
@@ -299,6 +358,8 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
             onChange={(e) => setMessageInput(e.target.value)}
             placeholder="Type your message..."
             disabled={sending}
+            maxLength={1000}
+            aria-label="Message input"
             className="flex-1"
           />
           <Button 
@@ -317,7 +378,7 @@ const ChatInterface = ({ tutorId, user }: { tutorId: string | undefined; user: a
         
         {/* Info Text */}
         <p className="text-xs text-muted-foreground text-center mt-2">
-          💡 This is a direct message with your tutor. They'll respond as soon as they're available. Free taster lessons available!
+          💡 This is a direct message. {otherPerson.role === 'Tutor' ? "They'll respond as soon as they're available. Free taster lessons available!" : "Feel free to discuss tutoring opportunities."}
         </p>
       </div>
     </div>
