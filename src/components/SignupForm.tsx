@@ -1,4 +1,5 @@
 
+
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,18 +18,23 @@ import { useNavigate } from 'react-router-dom';
 import { StripeConnectOnboarding } from '@/components/StripeConnectOnboarding';
 
 const signupSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().trim().email('Please enter a valid email address').max(255, 'Email must be less than 255 characters'),
+  password: z.string()
+    .min(6, 'Password must be at least 6 characters')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number')
+    .max(128, 'Password must be less than 128 characters'),
   confirmPassword: z.string().min(6, 'Password must be at least 6 characters'),
   userType: z.enum(['student', 'tutor'], {
     required_error: 'Please select if you are a student or tutor',
   }),
-  firstName: z.string().min(1, 'First name is required'),
+  firstName: z.string().trim().min(1, 'First name is required').max(50, 'First name must be less than 50 characters'),
   university: z.string().optional(),
   degree: z.string().optional(),
   year: z.string().optional(),
   exams: z.array(z.string()).optional(),
-  examRates: z.record(z.string(), z.number().min(1, 'Rate must be at least £1')).optional(),
+  examRates: z.record(z.string(), z.number().min(1, 'Rate must be at least £1').max(200, 'Rate cannot exceed £200')).optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -258,12 +264,8 @@ const SignupForm = ({ onSwitchToLogin }: SignupFormProps) => {
   const calculateTutorEarnings = (hourlyRate: number) => {
     if (!hourlyRate || hourlyRate <= 0) return 0;
     
-    // Stripe fee: 1.4% + 20p
-    const stripeFee = (hourlyRate * 0.014) + 0.20;
-    // Website commission: 10%
-    const websiteCommission = hourlyRate * 0.10;
-    // Amount tutor receives
-    const tutorReceives = hourlyRate - stripeFee - websiteCommission;
+    // Tutor receives 85% of the rate
+    const tutorReceives = hourlyRate * 0.85;
     
     return Math.max(0, tutorReceives);
   };
@@ -364,6 +366,23 @@ const SignupForm = ({ onSwitchToLogin }: SignupFormProps) => {
                       </Button>
                     </div>
                   </FormControl>
+                  <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                    <p>Password must contain:</p>
+                    <ul className="grid grid-cols-2 gap-1 text-xs">
+                      <li className={`flex items-center gap-1 ${field.value?.length >= 6 ? 'text-green-600' : ''}`}>
+                        {field.value?.length >= 6 ? '✓' : '•'} At least 6 characters
+                      </li>
+                      <li className={`flex items-center gap-1 ${/[a-z]/.test(field.value || '') ? 'text-green-600' : ''}`}>
+                        {/[a-z]/.test(field.value || '') ? '✓' : '•'} Lowercase letter
+                      </li>
+                      <li className={`flex items-center gap-1 ${/[A-Z]/.test(field.value || '') ? 'text-green-600' : ''}`}>
+                        {/[A-Z]/.test(field.value || '') ? '✓' : '•'} Uppercase letter
+                      </li>
+                      <li className={`flex items-center gap-1 ${/[0-9]/.test(field.value || '') ? 'text-green-600' : ''}`}>
+                        {/[0-9]/.test(field.value || '') ? '✓' : '•'} Number
+                      </li>
+                    </ul>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -413,6 +432,17 @@ const SignupForm = ({ onSwitchToLogin }: SignupFormProps) => {
                   <GraduationCap className="h-5 w-5" />
                   <span>Tutor Information</span>
                 </div>
+                
+                {/* Stripe Setup Notice */}
+                <Alert className="border-orange-200 bg-orange-50">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-800">
+                    <div className="font-medium mb-1">Important: Payment Account Setup Required</div>
+                    <div className="text-sm">
+                      After creating your account, you'll need to set up your Stripe payment account in Profile Settings to receive payments from students.
+                    </div>
+                  </AlertDescription>
+                </Alert>
                 
                 <FormField
                   control={form.control}
