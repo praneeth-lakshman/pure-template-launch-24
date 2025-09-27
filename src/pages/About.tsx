@@ -2,13 +2,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { GraduationCap, Users, Target, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import vincentPhoto from '@/assets/vincent-photo-optimized.jpg';
 
 const About = () => {
   return (
     <div className="min-h-screen py-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Hero Section */}
+        {/* Company Logo & Hero Section */}
         <div className="text-center mb-16 animate-fade-in-up">
+          <div className="flex justify-center mb-8">
+            <div className="w-24 h-24 bg-gradient-hero rounded-full flex items-center justify-center animate-scale-in">
+              <GraduationCap className="h-12 w-12 text-white" />
+            </div>
+          </div>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-6">
             About Us
           </h1>
@@ -37,9 +43,10 @@ const About = () => {
             <CardContent className="p-6 text-center">
               <div className="w-20 h-20 rounded-full mx-auto mb-4 overflow-hidden animate-scale-in">
                 <img 
-                  src="/loveable-uploads/e6733da1-9910-4902-9af8-7558885a27be.jpg" 
+                  src={vincentPhoto} 
                   alt="Vincent - Co-Founder & CEO"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover image-render-crisp"
+                  style={{ imageRendering: 'crisp-edges' }}
                 />
               </div>
               <h3 className="text-xl font-semibold text-foreground mb-2">Vincent</h3>
