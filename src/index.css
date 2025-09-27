@@ -156,4 +156,19 @@ All colors MUST be HSL.
     min-height: 100vh;
     min-height: -webkit-fill-available;
   }
+  
+  /* Image rendering optimizations */
+  .image-render-crisp {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+  
+  /* Improve overall image quality */
+  img {
+    image-rendering: auto;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
 }
