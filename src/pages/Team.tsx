@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,18 +9,43 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { TutorFilters, FilterState } from '@/components/TutorFilters';
+import { useAuth } from '@/hooks/useAuth';
 
 const Team = () => {
+  const { user } = useAuth();
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [filteredTutors, setFilteredTutors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stripeStatuses, setStripeStatuses] = useState<{[tutorId: string]: boolean}>({});
+  const [currentUserType, setCurrentUserType] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     entranceExam: 'all',
     subject: 'all',
     priceRange: [0, 100] // Default to full range instead of pre-selecting 20-50
   });
+
+  // Load current user type
+  useEffect(() => {
+    const loadCurrentUserType = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('user_type')
+          .eq('id', user.id)
+          .single();
+          
+        if (error) throw error;
+        setCurrentUserType(profile?.user_type?.toLowerCase() || null);
+      } catch (error) {
+        console.error('Error loading user type:', error);
+      }
+    };
+
+    loadCurrentUserType();
+  }, [user?.id]);
 
   // Initialize filters after loading tutors
   useEffect(() => {
@@ -416,6 +442,9 @@ const Team = () => {
   // 6. Two buttons (Chat Now and Buy Lessons/Setup In Progress)
   const renderTutorCard = (member: any, tutorIndex: number, sectionId: string) => {
     const examRate = getExamSpecificRate(member, sectionId);
+    
+    // Allow anyone to chat with tutors for inquiries
+    const canChat = member.role === 'Tutor';
 
     return (
       <Card key={`${member.name}-card`} className="hover:shadow-elegant transition-all duration-300 h-full flex flex-col hover:scale-[1.02]">
@@ -463,6 +492,15 @@ const Team = () => {
               >
                 <MessageSquare className="h-4 w-4 mr-2" />
                 Chat Unavailable
+              </Button>
+            ) : !canChat ? (
+              <Button 
+                disabled
+                className="flex-1 opacity-50 cursor-not-allowed"
+                title="Students can only chat with tutors"
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Chat Restricted
               </Button>
             ) : (
               <Button 
