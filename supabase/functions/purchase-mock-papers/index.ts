@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -35,7 +36,8 @@ serve(async (req) => {
       logStep("API key is valid");
     } catch (keyError) {
       logStep("API key test failed", keyError);
-      throw new Error(`Invalid Stripe API key: ${keyError.message}`);
+      const errorMessage = keyError instanceof Error ? keyError.message : String(keyError);
+      throw new Error(`Invalid Stripe API key: ${errorMessage}`);
     }
 
     // Create Supabase client
