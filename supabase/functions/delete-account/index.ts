@@ -1,4 +1,5 @@
 
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from "https://esm.sh/stripe@14.21.0"
 
@@ -71,18 +72,21 @@ Deno.serve(async (req) => {
 
     // 1. Delete all messages where user is involved in conversations
     console.log('🗑️ Deleting messages...')
-    const { error: messagesError } = await supabaseAdmin
-      .from('messages')
-      .delete()
-      .in('conversation_id', 
-        supabaseAdmin
-          .from('conversations')
-          .select('id')
-          .or(`client_id.eq.${userId},tutor_id.eq.${userId}`)
-      )
+    const { data: conversations } = await supabaseAdmin
+      .from('conversations')
+      .select('id')
+      .or(`client_id.eq.${userId},tutor_id.eq.${userId}`)
 
-    if (messagesError) {
-      console.error('Error deleting messages:', messagesError)
+    if (conversations && conversations.length > 0) {
+      const conversationIds = conversations.map(c => c.id)
+      const { error: messagesError } = await supabaseAdmin
+        .from('messages')
+        .delete()
+        .in('conversation_id', conversationIds)
+
+      if (messagesError) {
+        console.error('Error deleting messages:', messagesError)
+      }
     }
 
     // 2. Delete all conversations where user is involved
@@ -144,7 +148,7 @@ Deno.serve(async (req) => {
     console.error('Account deletion error:', error)
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to delete account' 
+        error: error instanceof Error ? error.message : 'Failed to delete account' 
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
