@@ -72,7 +72,7 @@ const ConversationList = ({ userId }: ConversationListProps) => {
         .from('profiles')
         .select('user_type')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (profileError) throw profileError;
 
@@ -87,12 +87,9 @@ const ConversationList = ({ userId }: ConversationListProps) => {
           messages!inner(content, sender_type, created_at)
         `);
 
-      // Filter conversations based on user type
-      if (currentUserType === 'Tutor') {
-        query = query.eq('tutor_id', userId);
-      } else {
-        query = query.eq('client_id', userId);
-      }
+      // Filter conversations where user is either client or tutor (regardless of user type)
+      // This handles cases where roles can be assigned flexibly based on who initiated
+      query = query.or(`client_id.eq.${userId},tutor_id.eq.${userId}`);
 
       const { data: convos, error } = await query.order('updated_at', { ascending: false });
 
