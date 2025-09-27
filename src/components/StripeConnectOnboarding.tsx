@@ -1,4 +1,5 @@
 
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -137,6 +138,24 @@ export const StripeConnectOnboarding = ({ onComplete }: StripeConnectOnboardingP
             </>
           )}
         </Button>
+
+        <Alert className="bg-blue-50 border-blue-200">
+          <AlertDescription className="text-blue-800">
+            <div className="space-y-2">
+              <p className="font-medium">Need help getting started?</p>
+              <p>Please follow the instructions in the link below to start onboarding:</p>
+              <a 
+                href="https://docs.google.com/document/d/1GpQpPj9kAivE8lhD140WzqnbahBio-amJYz0ALm-bmw/edit?usp=sharing" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 underline hover:no-underline inline-flex items-center gap-1"
+              >
+                Onboarding Instructions
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </AlertDescription>
+        </Alert>
 
         <p className="text-xs text-muted-foreground text-center">
           By continuing, you agree to Stripe's terms of service. 
