@@ -1,7 +1,10 @@
 
+
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from './use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { z } from 'zod';
+import { useErrorHandler } from '@/hooks/useErrorHandler';
 
 export interface Message {
   id: string;
@@ -23,8 +26,13 @@ export interface Conversation {
   updated_at: string;
 }
 
+export const messageSchema = z.object({
+  content: z.string().trim().min(1, { message: "Message cannot be empty" }).max(1000, { message: "Message must be under 1000 characters" })
+});
+
 export const useChat = () => {
   const { toast } = useToast();
+  const { handleError } = useErrorHandler();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,29 +54,71 @@ export const useChat = () => {
       })));
 
     } catch (error) {
-      console.error('Error loading messages:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load messages.",
-        variant: "destructive",
-      });
+      handleError(error, { fallbackMessage: "Failed to load messages." });
     }
   }, [toast]);
 
-  // Initialize or find conversation between current user and tutor
-  const initializeConversation = useCallback(async (currentUserId: string, tutorData: { id: string; name: string; service?: string }) => {
-    if (!currentUserId || !tutorData.id) return;
+  // Initialize or find conversation between current user and another user
+  const initializeConversation = useCallback(async (currentUserId: string, otherUserData: { id: string; name: string; service?: string }) => {
+    if (!currentUserId || !otherUserData.id) return;
 
     try {
       setLoading(true);
 
-      // Check if conversation already exists
-      const { data: existingConv, error: searchError } = await supabase
+      // Get current user's profile to check role
+      const { data: currentUserProfile, error: currentUserError } = await supabase
+        .from('profiles')
+        .select('user_type')
+        .eq('id', currentUserId)
+        .maybeSingle();
+
+      if (currentUserError) throw currentUserError;
+
+      // Get other user's profile to check role
+      const { data: otherUserProfile, error: otherUserError } = await supabase
+        .from('profiles')
+        .select('user_type')
+        .eq('id', otherUserData.id)
+        .maybeSingle();
+
+      if (otherUserError) throw otherUserError;
+
+      const currentUserType = currentUserProfile?.user_type?.toLowerCase();
+      const otherUserType = otherUserProfile?.user_type?.toLowerCase();
+
+      // No role restrictions - everyone can chat with everyone
+
+      // Check if conversation already exists - handle both directions
+      let existingConv = null;
+      let searchError = null;
+
+      // First try current user as client
+      const { data: convAsClient, error: clientError } = await supabase
         .from('conversations')
         .select('*')
         .eq('client_id', currentUserId)
-        .eq('tutor_id', tutorData.id)
+        .eq('tutor_id', otherUserData.id)
         .maybeSingle();
+
+      if (clientError && clientError.code !== 'PGRST116') {
+        searchError = clientError;
+      } else if (convAsClient) {
+        existingConv = convAsClient;
+      } else {
+        // If not found, try current user as tutor (for tutor-to-student or tutor-to-tutor chats)
+        const { data: convAsTutor, error: tutorError } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('client_id', otherUserData.id)
+          .eq('tutor_id', currentUserId)
+          .maybeSingle();
+
+        if (tutorError && tutorError.code !== 'PGRST116') {
+          searchError = tutorError;
+        } else if (convAsTutor) {
+          existingConv = convAsTutor;
+        }
+      }
 
       if (searchError && searchError.code !== 'PGRST116') {
         throw searchError;
@@ -85,19 +135,28 @@ export const useChat = () => {
         .from('profiles')
         .select('name')
         .eq('id', currentUserId)
-        .single();
+        .maybeSingle();
 
-      // Create new conversation
+      // Get other user profile for name
+      const { data: otherUserFullProfile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', otherUserData.id)
+        .maybeSingle();
+
+      // Create new conversation - treat current user as client, other user as tutor for consistency
+      const conversationData = {
+        client_id: currentUserId,
+        tutor_id: otherUserData.id,
+        tutor_name: otherUserFullProfile?.name || otherUserData.name,
+        client_name: userProfile?.name || 'User',
+        client_email: currentUserId,
+        service_type: otherUserData.service
+      };
+
       const { data: newConv, error: createError } = await supabase
         .from('conversations')
-        .insert({
-          client_id: currentUserId,
-          tutor_id: tutorData.id,
-          tutor_name: tutorData.name,
-          client_name: userProfile?.name || 'Student',
-          client_email: currentUserId, // Using ID as placeholder
-          service_type: tutorData.service
-        })
+        .insert(conversationData)
         .select()
         .single();
 
@@ -107,20 +166,27 @@ export const useChat = () => {
       await loadMessages(newConv.id);
 
     } catch (error) {
-      console.error('Error initializing conversation:', error);
-      toast({
-        title: "Error",
-        description: "Failed to start conversation. Please try again.",
-        variant: "destructive",
-      });
+      handleError(error, { fallbackMessage: "Failed to start conversation. Please try again." });
     } finally {
       setLoading(false);
     }
-  }, [toast, loadMessages]);
+  }, [handleError, loadMessages]);
 
   // Send a new message
   const sendMessage = useCallback(async (content: string, currentUserId: string) => {
-    if (!conversation || !currentUserId || !content.trim()) return;
+    if (!conversation || !currentUserId) return;
+
+    const result = messageSchema.safeParse({ content });
+    if (!result.success) {
+      toast({
+        title: "Invalid message",
+        description: result.error.issues?.[0]?.message || "Please check your message.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cleaned = result.data.content;
 
     try {
       setSending(true);
@@ -132,7 +198,7 @@ export const useChat = () => {
         .from('messages')
         .insert({
           conversation_id: conversation.id,
-          content: content.trim(),
+          content: cleaned,
           sender_type: senderType
         })
         .select()
@@ -146,13 +212,14 @@ export const useChat = () => {
         sender_type: data.sender_type as 'client' | 'tutor'
       }]);
 
+      // Bump conversation updated_at so it shows at top of lists
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversation.id);
+
     } catch (error) {
-      console.error('Error sending message:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
+      handleError(error, { fallbackMessage: "Failed to send message. Please try again." });
     } finally {
       setSending(false);
     }
