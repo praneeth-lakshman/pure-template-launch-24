@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -68,12 +69,43 @@ serve(async (req) => {
       // Check account status
       const account = await stripe.accounts.retrieve(profile.stripe_account_id);
       
+      // If account is fully enabled, return existing status
+      if (account.charges_enabled && account.payouts_enabled) {
+        return new Response(JSON.stringify({ 
+          accountId: profile.stripe_account_id,
+          charges_enabled: account.charges_enabled,
+          payouts_enabled: account.payouts_enabled,
+          details_submitted: account.details_submitted,
+          existing: true
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      
+      // Account exists but setup is incomplete - create new onboarding link
+      logStep("Account setup incomplete, creating new onboarding link", { 
+        charges_enabled: account.charges_enabled,
+        payouts_enabled: account.payouts_enabled 
+      });
+      
+      const accountLink = await stripe.accountLinks.create({
+        account: profile.stripe_account_id,
+        refresh_url: `${req.headers.get("origin")}/profile`,
+        return_url: `${req.headers.get("origin")}/profile`,
+        type: 'account_onboarding',
+      });
+
+      logStep("New account link created for existing account", { url: accountLink.url });
+
       return new Response(JSON.stringify({ 
         accountId: profile.stripe_account_id,
+        onboardingUrl: accountLink.url,
         charges_enabled: account.charges_enabled,
         payouts_enabled: account.payouts_enabled,
         details_submitted: account.details_submitted,
-        existing: true
+        existing: true,
+        setupIncomplete: true
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
