@@ -35,7 +35,7 @@ const Team = () => {
       try {
         const { data: profiles, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('*, stripe_account_id, charges_enabled, payouts_enabled')
           .eq('user_type', 'tutor');
 
         if (error) {
@@ -87,7 +87,7 @@ const Team = () => {
             // Reload profiles after updating rates
             const { data: updatedProfiles } = await supabase
               .from('profiles')
-              .select('*')
+              .select('*, stripe_account_id, charges_enabled, payouts_enabled')
               .eq('user_type', 'tutor');
             return updatedProfiles;
           }
@@ -98,6 +98,8 @@ const Team = () => {
         const finalProfiles = await setDefaultRates();
 
         // Transform database data to match component format
+        // IMPORTANT: Maintain exact profile structure for consistency
+        // Profile format: Avatar, Name, Description, University, Lesson Rates, 2 Buttons
         const transformedTutors = finalProfiles?.map(profile => {
           let specialties: string[] = [];
           
@@ -120,7 +122,10 @@ const Team = () => {
             year: profile.year || 'Year',
             specialties,
             examRates: profile.exam_rates || {},
-            account_status: (profile as any).account_status || 'active'
+            account_status: (profile as any).account_status || 'active',
+            stripe_account_id: profile.stripe_account_id,
+            charges_enabled: profile.charges_enabled,
+            payouts_enabled: profile.payouts_enabled
           };
         }) || [];
 
@@ -143,9 +148,23 @@ const Team = () => {
       
       const statusPromises = teamMembers.map(async (tutor) => {
         try {
-          // Check if tutor has charges_enabled in their profile
-          const hasStripeSetup = tutor.charges_enabled && tutor.stripe_account_id;
-          return { tutorId: tutor.id, hasStripeSetup };
+          // Comprehensive check for fully connected Stripe account
+          const hasStripeAccountId = Boolean(tutor.stripe_account_id);
+          const canAcceptCharges = Boolean(tutor.charges_enabled);
+          const canReceivePayouts = Boolean(tutor.payouts_enabled);
+          
+          // Only mark as fully setup if ALL conditions are met
+          const isFullyConnected = hasStripeAccountId && canAcceptCharges && canReceivePayouts;
+          
+          console.log(`Stripe status for ${tutor.name}:`, {
+            hasStripeAccountId,
+            canAcceptCharges,
+            canReceivePayouts,
+            isFullyConnected,
+            accountId: tutor.stripe_account_id
+          });
+          
+          return { tutorId: tutor.id, hasStripeSetup: isFullyConnected };
         } catch (error) {
           console.error(`Error checking Stripe status for tutor ${tutor.id}:`, error);
           return { tutorId: tutor.id, hasStripeSetup: false };
@@ -355,6 +374,22 @@ const Team = () => {
     }
   };
 
+  // Normalize exam type for payment API consistency
+  const normalizeExamTypeForPayment = (specialty: string): string => {
+    const normalized = specialty.toLowerCase().trim();
+    
+    // Map various formats to consistent payment API format
+    const examTypeMap: { [key: string]: string } = {
+      'interview prep': 'interview-prep',
+      'interview preparation': 'interview-prep',
+      'tmua': 'tmua',
+      'mat': 'mat',
+      'esat': 'esat'
+    };
+    
+    return examTypeMap[normalized] || normalized.replace(/\s+/g, '-');
+  };
+
   const getExamSpecificRate = (member: any, sectionId: string) => {
     const rates = member.examRates || {};
     
@@ -371,6 +406,14 @@ const Team = () => {
     return `£${rate}/hour`;
   };
 
+  // Standard Tutor Profile Template - DO NOT MODIFY
+  // Each profile must contain exactly:
+  // 1. Avatar (graduation cap icon)
+  // 2. Name
+  // 3. Description (year + course + student)
+  // 4. University (with map pin icon)
+  // 5. Lesson rates in the pricing box
+  // 6. Two buttons (Chat Now and Buy Lessons/Setup In Progress)
   const renderTutorCard = (member: any, tutorIndex: number, sectionId: string) => {
     const examRate = getExamSpecificRate(member, sectionId);
 
@@ -385,8 +428,8 @@ const Team = () => {
               </div>
             </div>
             
-            {/* Details Section - Two Columns */}
-            <div className="flex-1 grid grid-cols-2 gap-6">
+            {/* Details Section - Single Column */}
+            <div className="flex-1">
               {/* Name, University Column */}
               <div>
                 <CardTitle className="text-lg mb-2">{member.name}</CardTitle>
@@ -398,18 +441,6 @@ const Team = () => {
                     <MapPin className="h-3 w-3" />
                     <span className="text-sm">{member.university}</span>
                   </div>
-                </div>
-              </div>
-              
-              {/* Tutor Subjects Column */}
-              <div>
-                <p className="font-medium mb-2 text-foreground">Tutor:</p>
-                <div className="flex flex-wrap gap-1">
-                  {member.specialties.map((specialty: string) => (
-                    <Badge key={specialty} variant="secondary" className="text-xs">
-                      {specialty}
-                    </Badge>
-                  ))}
                 </div>
               </div>
             </div>
@@ -494,7 +525,7 @@ const Team = () => {
                             const { data, error } = await supabase.functions.invoke('create-payment', {
                               body: {
                                 tutorId: member.id,
-                                examType: specialty.toLowerCase(),
+                                examType: normalizeExamTypeForPayment(specialty),
                                 lessonQuantity: 1
                               }
                             });
@@ -533,7 +564,7 @@ const Team = () => {
                             const { data, error } = await supabase.functions.invoke('create-payment', {
                               body: {
                                 tutorId: member.id,
-                                examType: specialty.toLowerCase(),
+                                examType: normalizeExamTypeForPayment(specialty),
                                 lessonQuantity: 5
                               }
                             });
