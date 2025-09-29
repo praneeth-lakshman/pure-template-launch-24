@@ -2,7 +2,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { GraduationCap, Users, Target, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import vincentPhoto from '@/assets/vincent-photo-optimized.jpg';
 
 const About = () => {
   return (
@@ -43,7 +42,7 @@ const About = () => {
             <CardContent className="p-6 text-center">
               <div className="w-20 h-20 rounded-full mx-auto mb-4 overflow-hidden animate-scale-in">
                 <img 
-                  src={vincentPhoto} 
+                  src="/loveable-uploads/e6733da1-9910-4902-9af8-7558885a27be.jpg" 
                   alt="Vincent - Co-Founder & CEO"
                   className="w-full h-full object-cover image-render-crisp"
                   style={{ imageRendering: 'crisp-edges' }}
