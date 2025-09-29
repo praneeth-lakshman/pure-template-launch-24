@@ -29,6 +29,11 @@ const ESATMockPapers = () => {
               </Link>
             </Button>
             <Button variant="outline" asChild className="hover:scale-105 transition-transform duration-200">
+              <a href="/pdfs/Oil.pdf" target="_blank" rel="noopener noreferrer" style={{textDecoration: "none"}}>
+                Link to PDF
+              </a>
+            </Button>
+            <Button variant="outline" asChild className="hover:scale-105 transition-transform duration-200">
               <Link to="/esat/past-papers" className="no-underline">
                 Free Past Papers
               </Link>
